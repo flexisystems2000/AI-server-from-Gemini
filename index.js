@@ -12,7 +12,6 @@ const db = admin.firestore();
 
 const app = express();
 
-// Middleware: Increased limit to 10MB to handle image Base64 strings
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -26,10 +25,10 @@ const API_KEYS = [
 
 let keyIndex = 0;
 
-// Logging function
-async function logToFirebase(prompt, response) {
+// UPDATED: Log specifically to a user's history
+async function logToFirebase(userId, prompt, response) {
     try {
-        await db.collection("chat_logs").add({
+        await db.collection("users").doc(userId).collection("chat_history").add({
             user_message: prompt,
             jarvis_response: response,
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -40,21 +39,17 @@ async function logToFirebase(prompt, response) {
     }
 }
 
-// Core Gemini Engine (Updated for Multimodal support)
 async function callGemini(prompt, imageBase64) {
     const key = API_KEYS[keyIndex];
     keyIndex = (keyIndex + 1) % API_KEYS.length;
 
-    // Build the contents array for Gemini
     let parts = [{ text: prompt }];
 
     if (imageBase64) {
-        // Strip the metadata header if present (e.g., "data:image/jpeg;base64,")
         const base64Data = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
-        
         parts.push({
             inlineData: {
-                mimeType: "image/jpeg", // Defaults to jpeg, works for png too
+                mimeType: "image/jpeg",
                 data: base64Data
             }
         });
@@ -71,7 +66,8 @@ async function callGemini(prompt, imageBase64) {
 // Admission Help Route
 app.post("/admission-help", async (req, res) => {
     try {
-        const { prompt, image } = req.body;
+        // Extract userId from frontend payload
+        const { prompt, image, userId, userName } = req.body;
         
         const currentYear = new Date().toLocaleDateString("en-NG", { 
             timeZone: "Africa/Lagos", 
@@ -80,6 +76,7 @@ app.post("/admission-help", async (req, res) => {
 
         const systemInstruction = `
             You are Jarvis, a professional support agent at Flexi Educational Consult (F.E.C).
+            Current User: ${userName}
             Current Year: ${currentYear}
             
             STRICT RULES:
@@ -95,7 +92,10 @@ app.post("/admission-help", async (req, res) => {
         `;
         
         const result = await callGemini(systemInstruction, image);
-        logToFirebase(prompt, result);
+        
+        // Log the exchange to the specific user's document
+        logToFirebase(userId, prompt, result);
+        
         res.json({ success: true, response: result });
     } catch (err) {
         console.error("❌ AI Route Error:", err.response?.data?.error || err.message);
