@@ -1,18 +1,19 @@
 require("dotenv").config();
-const cors = require('cors');
-const app = express();
 const express = require("express");
 const axios = require("axios");
 const admin = require("firebase-admin");
+const cors = require("cors");
 
-// Initialize Firebase using environment variables (Best Practice)
-// Ensure FIREBASE_SERVICE_ACCOUNT is set in your Render/Railway dashboard as a JSON string
+// Initialize Firebase
 admin.initializeApp({
     credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
 });
 const db = admin.firestore();
 
 const app = express();
+
+// Middleware
+app.use(cors()); // Critical: Allows your frontend to talk to this API
 app.use(express.json());
 
 const API_KEYS = [
@@ -57,6 +58,7 @@ async function callGemini(prompt) {
 app.post("/admission-help", async (req, res) => {
     try {
         const { prompt } = req.body;
+        if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
         const systemInstruction = `
             You are Jarvis, the official support bot for Flexi Educational Consult (F.E.C).
@@ -82,6 +84,10 @@ app.post("/admission-help", async (req, res) => {
     }
 });
 
+// Health check endpoint
+app.get("/", (req, res) => res.send("Jarvis is online."));
+
 // Use dynamic port for deployment compatibility
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Jarvis (F.E.C Official Bot) Running on port ${PORT}`));
+                        
