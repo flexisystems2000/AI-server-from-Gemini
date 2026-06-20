@@ -12,9 +12,9 @@ const db = admin.firestore();
 
 const app = express();
 
-// Middleware
-app.use(cors()); // Critical: Allows your frontend to talk to this API
-app.use(express.json());
+// Middleware: Increased limit to 10MB to handle image Base64 strings
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
 
 const API_KEYS = [
     process.env.GEMINI_API_KEY_1,
@@ -40,65 +40,70 @@ async function logToFirebase(prompt, response) {
     }
 }
 
-// Core Gemini Engine
-async function callGemini(prompt) {
+// Core Gemini Engine (Updated for Multimodal support)
+async function callGemini(prompt, imageBase64) {
     const key = API_KEYS[keyIndex];
     keyIndex = (keyIndex + 1) % API_KEYS.length;
 
+    // Build the contents array for Gemini
+    let parts = [{ text: prompt }];
+
+    if (imageBase64) {
+        // Strip the metadata header if present (e.g., "data:image/jpeg;base64,")
+        const base64Data = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
+        
+        parts.push({
+            inlineData: {
+                mimeType: "image/jpeg", // Defaults to jpeg, works for png too
+                data: base64Data
+            }
+        });
+    }
+
     const response = await axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-        {
-            contents: [{ parts: [{ text: prompt }] }]
-        }
+        { contents: [{ parts: parts }] }
     );
+    
     return response.data.candidates[0].content.parts[0].text;
 }
 
 // Admission Help Route
 app.post("/admission-help", async (req, res) => {
     try {
-        const { prompt } = req.body;
+        const { prompt, image } = req.body;
         
-        // Get the current date in West Africa Time (UTC+1)
         const currentYear = new Date().toLocaleDateString("en-NG", { 
             timeZone: "Africa/Lagos", 
             year: "numeric" 
         });
 
         const systemInstruction = `
-    You are Jarvis, a professional support agent at Flexi Educational Consult (F.E.C).
-    Current Year: ${currentYear}
-    
-    STRICT RULES:
-    1. FORMAT: Provide brief, plain-text responses. No bold (**) or bullet points. 
-    2. LENGTH: Keep responses under 40 words. Get straight to the point.
-    3. PERSONA: Be professional, authoritative, and helpful. You are a support agent, NOT a bot.
-    4. GREETINGS & SMALL TALK: Respond politely to greetings (e.g., "Hi", "How are you?"). Keep the response brief and immediately pivot to business (e.g., "I am doing well, thank you. How can I assist with your 2026 admission today?").
-    5. REFUSAL: You are NOT a tutor. Do not solve academic assignments. If asked, reply exactly: "I cannot solve academic assignments. Please contact Flexi Educational Consult at 09034159839."
-    6. KNOWLEDGE: Provide accurate admission status information for Nigerian institutions. If information is unavailable, advise the user to contact us for updates.
-    7. REDIRECTION: Only use the phrase "For updates and processing, please contact Flexi Educational Consult at 09034159839" when you do not have the specific answer or the user asks for external links.
-    8. NO FILLER: Never apologize, never offer unsolicited additional help, and never explain why you cannot answer.
-    
-    User Message: ${prompt}
-`;
+            You are Jarvis, a professional support agent at Flexi Educational Consult (F.E.C).
+            Current Year: ${currentYear}
+            
+            STRICT RULES:
+            1. FORMAT: Plain-text, no bold (**), no bullet points.
+            2. LENGTH: Under 40 words.
+            3. PERSONA: Professional and authoritative support agent.
+            4. REFUSAL: Do not solve academic assignments. Reply: "I cannot solve academic assignments. Please contact Flexi Educational Consult at 09034159839."
+            5. KNOWLEDGE: Accurate admission info for Nigerian institutions.
+            6. REDIRECTION: Use "For updates and processing, please contact Flexi Educational Consult at 09034159839" if unknown.
+            7. NO FILLER: Never apologize or offer unsolicited help.
+            
+            User Message: ${prompt}
+        `;
         
-        
-        
-        
-
-        const result = await callGemini(systemInstruction);
+        const result = await callGemini(systemInstruction, image);
         logToFirebase(prompt, result);
         res.json({ success: true, response: result });
     } catch (err) {
-        console.error("❌ AI Route Error:", err.message);
+        console.error("❌ AI Route Error:", err.response?.data?.error || err.message);
         res.status(500).json({ success: false, error: "Service unavailable" });
     }
 });
 
-// Health check endpoint
 app.get("/", (req, res) => res.send("Jarvis is online."));
 
-// Use dynamic port for deployment compatibility
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Jarvis (F.E.C Official Bot) Running on port ${PORT}`));
-                        
