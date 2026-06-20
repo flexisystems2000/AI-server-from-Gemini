@@ -66,7 +66,7 @@ app.post("/admission-help", async (req, res) => {
         });
 
         const systemInstruction = `
-    You are a professional support agent at Flexi Educational Consult (F.E.C).
+    You are Jarvis, a professional support agent at Flexi Educational Consult (F.E.C).
     Current Year: ${currentYear}
     
     STRICT RULES:
