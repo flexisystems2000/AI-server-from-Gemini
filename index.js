@@ -2,11 +2,11 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const admin = require("firebase-admin");
-const serviceAccount = require("./service-account-key.json"); // Ensure this path is correct
 
-// Initialize Firebase
+// Initialize Firebase using environment variables (Best Practice)
+// Ensure FIREBASE_SERVICE_ACCOUNT is set in your Render/Railway dashboard as a JSON string
 admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
 });
 const db = admin.firestore();
 
@@ -75,8 +75,11 @@ app.post("/admission-help", async (req, res) => {
         
         res.json({ success: true, response: result });
     } catch (err) {
+        console.error("❌ AI Route Error:", err.message);
         res.status(500).json({ success: false, error: "Service unavailable" });
     }
 });
 
-app.listen(3000, () => console.log("🚀 Jarvis (F.E.C Official Bot) Running"));
+// Use dynamic port for deployment compatibility
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Jarvis (F.E.C Official Bot) Running on port ${PORT}`));
