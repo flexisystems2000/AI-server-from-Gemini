@@ -1,11 +1,18 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
+const admin = require("firebase-admin");
+const serviceAccount = require("./service-account-key.json"); // Ensure this path is correct
+
+// Initialize Firebase
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+const db = admin.firestore();
 
 const app = express();
 app.use(express.json());
 
-// Load 5 keys from environment variables
 const API_KEYS = [
     process.env.GEMINI_API_KEY_1,
     process.env.GEMINI_API_KEY_2,
@@ -16,6 +23,21 @@ const API_KEYS = [
 
 let keyIndex = 0;
 
+// Logging function
+async function logToFirebase(prompt, response) {
+    try {
+        await db.collection("chat_logs").add({
+            user_message: prompt,
+            jarvis_response: response,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            platform: "Flexi Educational Consult"
+        });
+    } catch (err) {
+        console.error("❌ Firebase Log Error:", err);
+    }
+}
+
+// Core Gemini Engine
 async function callGemini(prompt) {
     const key = API_KEYS[keyIndex];
     keyIndex = (keyIndex + 1) % API_KEYS.length;
@@ -29,6 +51,7 @@ async function callGemini(prompt) {
     return response.data.candidates[0].content.parts[0].text;
 }
 
+// Admission Help Route
 app.post("/admission-help", async (req, res) => {
     try {
         const { prompt } = req.body;
@@ -47,7 +70,8 @@ app.post("/admission-help", async (req, res) => {
 
         const result = await callGemini(systemInstruction);
         
-        // Log to your database here
+        // Log to Firebase Asynchronously
+        logToFirebase(prompt, result);
         
         res.json({ success: true, response: result });
     } catch (err) {
